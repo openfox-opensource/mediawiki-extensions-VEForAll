@@ -38,7 +38,7 @@
 		this.init( content );
 	};
 
-	OO.inheritClass( mw.veForAll.Target, ve.init.sa.Target );
+	OO.inheritClass( mw.veForAll.Target, ve.init.mw.Target );
 
 	mw.veForAll.Target.prototype.init = function ( content ) {
 		this.convertToHtml( content );
@@ -227,6 +227,34 @@
 		return mw.config.get( 'wgPageName' ).split( /(\\|\/)/g ).pop();
 	};
 
+	mw.veForAll.Target.prototype.fixTablePipesInner = function ( partToReplace ) {
+		var i,
+			currentChar,
+			lastChar = '',
+			insideTemplate = false,
+			replacementStr = '';
+		for ( i = 0; i < partToReplace.length; i++ ) {
+			currentChar = partToReplace.charAt( i );
+			if ( currentChar === '[' || currentChar + lastChar === '{{' ) {
+				insideTemplate = true;
+			} else if ( currentChar === ']' || currentChar + lastChar === '}}' ) {
+				insideTemplate = false;
+			}
+			lastChar = currentChar;
+			replacementStr += ( !insideTemplate && currentChar === '|' ) ? '{{!}}' : currentChar;
+		}
+		return replacementStr;
+	};
+	// Page Forms can't use tables defined by pipes (|) but that is exactly what Parsoid returns.
+	mw.veForAll.Target.prototype.fixTablePipes = function ( wikitext ) {
+		var target = this;
+		wikitext = wikitext.replace( /\{\{!\}\}/g, '|' );
+		wikitext = wikitext.replace( /\{\|(\s|\S)+\|\}/g, function ( partToReplace ) {
+			return target.fixTablePipesInner( partToReplace );
+		} );
+		return wikitext;
+	};
+
 	mw.veForAll.Target.prototype.convertToWikiText = function ( content ) {
 		var target = this,
 			oldFormat = 'html',
@@ -246,7 +274,7 @@
 			content: content,
 			title: this.getPageName()
 		} ).then( function ( data ) {
-			$( target.$node ).val( data[ 'veforall-parsoid-utils' ].content );
+			$( target.$node ).val( target.fixTablePipes(data[ 'veforall-parsoid-utils' ].content) );
 			$( target.$node ).change();
 
 			$( target.$node )
